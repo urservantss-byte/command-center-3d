@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Command Center</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#141a30; --navy2:#1d2440; --line:#2c3557;
+  --txt:#eef1ff; --dim:#9aa3c7; --acc:#7c8cf8; --green:#4ade80; --red:#f87171;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#0d1122;color:var(--txt)}
+#scene{position:fixed;inset:0}
+#scene canvas{display:block}
+#ui{position:fixed;inset:0;pointer-events:none;z-index:10}
+#ui>*{pointer-events:auto}
+/* top bar */
+#topbar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:14px;
+  padding:10px 18px;background:linear-gradient(180deg,rgba(13,17,34,.92),rgba(13,17,34,.55) 70%,transparent);}
+.logo{font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px}
+.logo .mark{width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#7c8cf8,#b388ff);
+  display:flex;align-items:center;justify-content:center;font-size:15px}
+.nav{display:flex;gap:4px;margin-left:8px}
+.nav button{background:none;border:0;color:var(--dim);padding:7px 13px;border-radius:9px;font-size:13.5px;cursor:pointer}
+.nav button.on{background:var(--acc);color:#fff;font-weight:600}
+#topbar .sp{flex:1}
+#clock{font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums}
+#conn{font-size:12.5px;color:var(--dim);display:flex;align-items:center;gap:6px}
+#conn .dot{width:9px;height:9px;border-radius:50%;background:var(--red)}
+#conn.ok .dot{background:var(--green)}
+#tok{background:#0d1122;border:1px solid var(--line);color:var(--txt);padding:7px 10px;border-radius:9px;width:170px;font-size:13px}
+/* side panels */
+.panel{position:absolute;background:rgba(20,26,48,.88);backdrop-filter:blur(8px);
+  border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.panel h3{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin-bottom:10px;
+  display:flex;align-items:center;gap:7px}
+.panel h3 .live{font-size:10px;background:#123f2b;color:var(--green);padding:2px 8px;border-radius:20px;letter-spacing:.5px}
+#team{left:16px;top:64px;width:210px;max-height:46vh;overflow:auto}
+.agent{display:flex;align-items:center;gap:10px;padding:8px;border-radius:11px;margin-bottom:4px;background:rgba(255,255,255,.03)}
+.avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:14px;color:#fff;flex:none}
+.agent .nm{font-size:13.5px;font-weight:600}
+.agent .st{font-size:11px;color:var(--dim)}
+.agent .dot{width:9px;height:9px;border-radius:50%;margin-left:auto;flex:none}
+.dot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+.dot.off{background:#555}
+/* activity */
+#activity{right:16px;top:64px;width:300px;max-height:52vh;display:flex;flex-direction:column}
+#feed{overflow-y:auto;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin}
+.msg{background:rgba(255,255,255,.045);border-radius:11px;padding:9px 11px;font-size:13px;line-height:1.45}
+.msg .meta{font-size:11px;color:var(--dim);margin-bottom:3px}
+.msg .meta b{color:var(--acc)}
+.msg.me{border-left:3px solid var(--green)}
+.msg .rt{font-size:11px;color:var(--dim);font-style:italic;margin-bottom:2px}
+/* stats */
+#stats{left:16px;bottom:86px;display:flex;gap:10px}
+.stat{background:rgba(20,26,48,.88);border:1px solid var(--line);border-radius:13px;padding:10px 14px;text-align:center;backdrop-filter:blur(8px)}
+.stat .v{font-size:19px;font-weight:800}
+.stat .l{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px}
+/* composer */
+#composer{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;width:min(680px,92vw);
+  background:rgba(20,26,48,.92);border:1px solid var(--line);border-radius:16px;padding:10px;
+  display:flex;gap:8px;backdrop-filter:blur(8px)}
+#composer input,#composer select{background:#0d1122;border:1px solid var(--line);color:var(--txt);
+  padding:9px 11px;border-radius:10px;font-size:13.5px}
+#cf{width:110px}#ct{width:130px}#cx{flex:1}
+#composer button{background:var(--acc);border:0;color:#fff;padding:9px 18px;border-radius:10px;
+  font-size:14px;font-weight:700;cursor:pointer}
+#composer button:hover{filter:brightness(1.12)}
+#hint{position:absolute;bottom:18px;right:18px;font-size:11.5px;color:var(--dim);
+  background:rgba(20,26,48,.7);padding:7px 11px;border-radius:9px;border:1px solid var(--line)}
+@media(max-width:900px){
+  #team{display:none}
+  #activity{width:240px;max-height:38vh}
+  #stats{display:none}
+  .nav{display:none}
+}
+</style>
+<script type="importmap">
+{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<div id="scene"></div>
+<div id="ui">
+  <div id="topbar">
+    <div class="logo"><span class="mark">◈</span> Command Center</div>
+    <div class="nav"><button class="on">Beranda</button><button id="navTeam">Tim</button><button id="navAct">Aktivitas</button></div>
+    <div class="sp"></div>
+    <span id="clock"></span>
+    <span id="conn"><span class="dot"></span><span id="connTxt">butuh token</span></span>
+    <input id="tok" type="password" placeholder="token…">
+  </div>
+  <div class="panel" id="team"><h3>Team <span class="live">Live</span></h3><div id="agents"></div></div>
+  <div class="panel" id="activity"><h3>Aktivitas terbaru <span class="live">Live</span></h3><div id="feed"></div></div>
+  <div id="stats">
+    <div class="stat"><div class="v" id="stOnline">–</div><div class="l">Online</div></div>
+    <div class="stat"><div class="v" id="stMsg">–</div><div class="l">Pesan</div></div>
+    <div class="stat"><div class="v" id="stUp">–</div><div class="l">Uptime</div></div>
+  </div>
+  <form id="composer">
+    <input id="cf" list="senders" placeholder="dari">
+    <datalist id="senders"></datalist>
+    <select id="ct"><option value="all">🌐 Semua</option></select>
+    <input id="cx" placeholder="Tulis pesan…" autocomplete="off">
+    <button>Kirim ➤</button>
+  </form>
+  <div id="hint">Tarik untuk orbit · scroll untuk zoom</div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ---------- 3D OFFICE SCENE ---------- */
+const container = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a2450);
+scene.fog = new THREE.Fog(0x2a2450, 30, 60);
+
+const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, .1, 200);
+camera.position.set(13, 11, 15);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.2, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI/2.15;
+controls.minDistance = 6; controls.maxDistance = 34;
+
+scene.add(new THREE.HemisphereLight(0xcfd4ff, 0x3a2f5a, .85));
+const sun = new THREE.DirectionalLight(0xfff2dd, 1.6);
+sun.position.set(10, 16, 8); sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-16; sun.shadow.camera.right=16;
+sun.shadow.camera.top=16; sun.shadow.camera.bottom=-16;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x8f9bff, .35);
+fill.position.set(-12, 8, -6); scene.add(fill);
+
+const M = (c,r=.85)=>new THREE.MeshStandardMaterial({color:c,roughness:r});
+function box(w,h,d,c,x,y,z,ry=0){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));
+  m.position.set(x,y,z); m.rotation.y=ry;
+  m.castShadow=m.receiveShadow=true; scene.add(m); return m;
+}
+function cyl(rt,rb,h,c,x,y,z,seg=20){
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),M(c));
+  m.position.set(x,y,z); m.castShadow=m.receiveShadow=true; scene.add(m); return m;
+}
+
+/* floor + rug */
+{
+  const f=new THREE.Mesh(new THREE.PlaneGeometry(34,26),M(0xe7dbc2,.95));
+  f.rotation.x=-Math.PI/2; f.receiveShadow=true; scene.add(f);
+  const rug=new THREE.Mesh(new THREE.CircleGeometry(4.6,40),M(0xd9c9e8,.95));
+  rug.rotation.x=-Math.PI/2; rug.position.set(1.5,.01,2.5); rug.receiveShadow=true; scene.add(rug);
+}
+/* walls */
+{
+  const w1=new THREE.Mesh(new THREE.PlaneGeometry(34,9),M(0x9d92d8,.95));
+  w1.position.set(0,4.5,-13); w1.receiveShadow=true; scene.add(w1);
+  const w2=new THREE.Mesh(new THREE.PlaneGeometry(26,9),M(0x8a80c8,.95));
+  w2.rotation.y=Math.PI/2; w2.position.set(-17,4.5,0); w2.receiveShadow=true; scene.add(w2);
+  // wall text
+  const cv=document.createElement('canvas'); cv.width=1024; cv.height=160;
+  const g=cv.getContext('2d'); g.fillStyle='#e8e2ff'; g.font='900 84px system-ui';
+  g.textAlign='center'; g.fillText('GOOD IDEAS',512,66); g.fillText('BETTER WEBSITES',512,146);
+  const tx=new THREE.CanvasTexture(cv);
+  const t=new THREE.Mesh(new THREE.PlaneGeometry(11,1.7),
+    new THREE.MeshBasicMaterial({map:tx,transparent:true,opacity:.9}));
+  t.position.set(-8,6.2,-12.9); scene.add(t);
+}
+/* desks with monitors */
+const deskSpots=[];
+function desk(x,z,ry=0){
+  const grp=new THREE.Group();
+  const top=new THREE.Mesh(new THREE.BoxGeometry(3.4,.14,1.5),M(0xf3ede0,.7));
+  top.position.y=1.02; grp.add(top);
+  for(const [lx,lz] of [[-1.5,-.6],[1.5,-.6],[-1.5,.6],[1.5,.6]]){
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(.12,1,.12),M(0x8a7a5c,.8));
+    leg.position.set(lx,.5,lz); grp.add(leg);
+  }
+  // monitor
+  const scr=new THREE.Mesh(new THREE.BoxGeometry(1.15,.75,.08),M(0x232838,.5));
+  scr.position.set(-.5,1.55,-.25); grp.add(scr);
+  const glow=new THREE.Mesh(new THREE.PlaneGeometry(1.0,.6),
+    new THREE.MeshBasicMaterial({color:0x9fd8ff}));
+  glow.position.set(-.5,1.55,-.2); grp.add(glow);
+  const scr2=scr.clone(); scr2.position.x=.75; grp.add(scr2);
+  const glow2=glow.clone(); glow2.position.x=.75; grp.add(glow2);
+  const stand=new THREE.Mesh(new THREE.BoxGeometry(.1,.35,.1),M(0x232838,.5));
+  stand.position.set(-.5,1.2,-.25); grp.add(stand);
+  const stand2=stand.clone(); stand2.position.x=.75; grp.add(stand2);
+  // keyboard
+  const kb=new THREE.Mesh(new THREE.BoxGeometry(.9,.05,.32),M(0xd8d2c4,.8));
+  kb.position.set(.1,1.12,.35); grp.add(kb);
+  // chair
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(.85,.12,.85),M(0x5b6b8c,.8));
+  seat.position.set(0,.62,1.35); grp.add(seat);
+  const back=new THREE.Mesh(new THREE.BoxGeometry(.85,.9,.12),M(0x5b6b8c,.8));
+  back.position.set(0,1.15,1.72); grp.add(back);
+  const pole=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.55,10),M(0x39415a,.6));
+  pole.position.set(0,.32,1.35); grp.add(pole);
+  grp.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+  grp.position.set(x,0,z); grp.rotation.y=ry; scene.add(grp);
+  deskSpots.push({x,z,ry});
+}
+desk(-7.5,-8.5); desk(-3.2,-8.5); desk(1.1,-8.5); desk(5.4,-8.5);
+/* side desks right */
+desk(10.5,-2, -Math.PI/2); desk(10.5,2.2,-Math.PI/2);
+/* sofa set */
+{
+  box(3.6,.55,1.5,0x9db89a,1.5,.45,4.6);
+  box(3.6,1.0,.35,0x8aa588,1.5,1.0,5.25);
+  box(.35,1.0,1.5,0x8aa588,-.15,1.0,4.6);
+  box(3.95,.35,1.85,0x8aa588,1.5,1.05,4.6);
+  box(1.6,.12,1.0,0xb08d5f,1.5,.62,2.4); // coffee table
+  cyl(.5,.4,.5,0xc46a5a,1.5,.95,2.4);    // vase-ish accent
+  // poufs
+  const p1=new THREE.Mesh(new THREE.SphereGeometry(.62,18,14),M(0xf2c14e,.9));
+  p1.position.set(-2.6,.55,3.4); p1.scale.y=.82; p1.castShadow=true; scene.add(p1);
+  const p2=new THREE.Mesh(new THREE.SphereGeometry(.55,18,14),M(0x7c8cf8,.9));
+  p2.position.set(5.6,.5,3.2); p2.scale.y=.82; p2.castShadow=true; scene.add(p2);
+}
+/* plants */
+function plant(x,z,s=1){
+  cyl(.34*s,.26*s,.55*s,0xb0704f,x,.28*s,z);
+  const f=new THREE.Mesh(new THREE.IcosahedronGeometry(.62*s,1),M(0x5da86a,.9));
+  f.position.set(x,.95*s,z); f.castShadow=true; scene.add(f);
+  const f2=new THREE.Mesh(new THREE.IcosahedronGeometry(.42*s,1),M(0x6fbf7d,.9));
+  f2.position.set(x+.3*s,1.25*s,z+.1); f2.castShadow=true; scene.add(f2);
+}
+plant(-11,-10.5,1.2); plant(12.5,-10.8,1); plant(-12.5,4,1.1); plant(6.8,7.5,.9);
+/* big stat screen on wall */
+{
+  box(7.5,3.4,.18,0x1c2342,-1,4.6,-12.85);
+  const cv=document.createElement('canvas'); cv.width=512; cv.height=232;
+  window._statCanvas=cv;
+  const tx=new THREE.CanvasTexture(cv);
+  const scr=new THREE.Mesh(new THREE.PlaneGeometry(7.1,3.1),
+    new THREE.MeshBasicMaterial({map:tx}));
+  scr.position.set(-1,4.6,-12.74); scene.add(scr);
+  window._statTex=tx;
+}
+function drawStatScreen(online,total,msgs){
+  const cv=window._statCanvas; if(!cv) return;
+  const g=cv.getContext('2d');
+  g.fillStyle='#1c2342'; g.fillRect(0,0,512,232);
+  g.fillStyle='#7c8cf8'; g.font='700 30px system-ui'; g.textAlign='center';
+  const h=new Date().getHours();
+  const sap=h<11?'pagi':h<15?'siang':h<19?'sore':'malam';
+  g.fillText('Selamat '+sap+'! 👋',256,52);
+  g.fillStyle='#9aa3c7'; g.font='400 20px system-ui';
+  g.fillText('Semua sistem berjalan dengan baik.',256,84);
+  const items=[[online+'/'+total+' online','#4ade80'],[msgs+' pesan','#7c8cf8']];
+  items.forEach(([t,c],i)=>{
+    const x=i? 356:156;
+    g.fillStyle='#262e52'; g.fillRect(x-110,110,220,92);
+    g.fillStyle=c; g.font='800 44px system-ui'; g.fillText(t.split(' ')[0],x,158);
+    g.fillStyle='#9aa3c7'; g.font='400 18px system-ui'; g.fillText(t.split(' ').slice(1).join(' ')||'',x,188);
+  });
+  window._statTex.needsUpdate=true;
+}
+
+/* ---------- AGENT CHARACTERS ---------- */
+const agents3d=new Map();
+const labelCache={};
+function makeLabel(text,color){
+  const key=text+color; if(labelCache[key]) return labelCache[key].clone();
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=64;
+  const g=cv.getContext('2d');
+  g.fillStyle='rgba(13,17,34,.85)';
+  g.beginPath(); g.roundRect(28,6,200,52,14); g.fill();
+  g.fillStyle=color; g.font='700 26px system-ui'; g.textAlign='center';
+  g.fillText(text,128,42);
+  const tx=new THREE.CanvasTexture(cv);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false}));
+  sp.scale.set(2.2,.55,1);
+  labelCache[key]=sp; return sp.clone();
+}
+const CHAR_COLORS=[0x7c8cf8,0x4ade80,0xf2b14e,0xf87171,0x38bdf8,0xc084fc];
+function spawnAgent(name,i,online){
+  const grp=new THREE.Group();
+  const col=CHAR_COLORS[i%CHAR_COLORS.length];
+  const body=new THREE.Mesh(new THREE.CapsuleGeometry(.32,.62,6,14),
+    new THREE.MeshStandardMaterial({color:online?col:0x6b7280,roughness:.7}));
+  body.position.y=.85; body.castShadow=true; grp.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.26,18,14),
+    new THREE.MeshStandardMaterial({color:0xf2c9a0,roughness:.7}));
+  head.position.y=1.55; head.castShadow=true; grp.add(head);
+  const ring=new THREE.Mesh(new THREE.RingGeometry(.5,.62,28),
+    new THREE.MeshBasicMaterial({color:online?0x4ade80:0x555a6b,transparent:true,opacity:.9,side:THREE.DoubleSide}));
+  ring.rotation.x=-Math.PI/2; ring.position.y=.02; grp.add(ring);
+  grp.userData.ring=ring; grp.userData.body=body; grp.userData.baseCol=col;
+  const spot=deskSpots[i%deskSpots.length];
+  const dx=Math.sin(spot.ry), dz=Math.cos(spot.ry);
+  grp.position.set(spot.x+dx*1.35, 0, spot.z+dz*1.35);
+  grp.rotation.y=spot.ry+Math.PI;
+  const label=makeLabel(name, online?'#eef1ff':'#9aa3c7');
+  label.position.y=2.15; grp.add(label);
+  grp.userData.label=label;
+  scene.add(grp); agents3d.set(name,grp);
+}
+function syncAgents(list){
+  const names=new Set(list.map(a=>a.name));
+  for(const [n,g] of agents3d) if(!names.has(n)){scene.remove(g);agents3d.delete(n);}
+  list.forEach((a,i)=>{
+    let g=agents3d.get(a.name);
+    if(!g){spawnAgent(a.name,i,a.online);}
+    else{
+      g.userData.ring.material.color.set(a.online?0x4ade80:0x555a6b);
+      g.userData.body.material.color.set(a.online?g.userData.baseCol:0x6b7280);
+      const nl=makeLabel(a.name,a.online?'#eef1ff':'#9aa3c7');
+      nl.position.y=2.15; g.remove(g.userData.label); g.userData.label=nl; g.add(nl);
+    }
+  });
+}
+/* gentle idle animation */
+const clockT=new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const t=clockT.getElapsedTime();
+  for(const [,g] of agents3d) g.position.y=Math.sin(t*1.6+g.position.x)*.04;
+  controls.update(); renderer.render(scene,camera);
+}
+animate();
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+/* ---------- APP LOGIC ---------- */
+const $=id=>document.getElementById(id);
+const tok=()=>$('tok').value||localStorage.cc_tok||'';
+$('tok').value=localStorage.cc_tok||'';
+$('tok').onchange=e=>{localStorage.cc_tok=e.target.value;tick();};
+$('cf').value=localStorage.cc_from||'';
+let lastId=0, allMsgs=[];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const tstr=ts=>new Date(ts*1000).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+const AVC=['#7c8cf8','#4ade80','#f2b14e','#f87171','#38bdf8','#c084fc'];
+
+async function api(p,o={}){
+  const r=await fetch(p,{...o,headers:{...(o.headers||{}),'Authorization':'Bearer '+tok()}});
+  if(!r.ok) throw new Error(r.status);
+  return r.json();
+}
+function setConn(ok,txt){
+  $('conn').classList.toggle('ok',!!ok);
+  $('connTxt').textContent=txt;
+}
+function renderAgents(agents){
+  $('agents').innerHTML=agents.map((a,i)=>
+    `<div class="agent"><div class="avatar" style="background:${AVC[i%AVC.length]}">${esc(a.name[0].toUpperCase())}</div>
+     <div><div class="nm">${esc(a.name)}</div><div class="st">${a.online?'online':'offline'}</div></div>
+     <span class="dot ${a.online?'on':'off'}"></span></div>`).join('')
+    ||'<div style="color:var(--dim);font-size:13px">belum ada agent</div>';
+  const names=['iqbal',...agents.map(a=>a.name)];
+  $('senders').innerHTML=names.map(n=>`<option value="${esc(n)}">`).join('');
+  const sel=$('ct'), cur=sel.value;
+  sel.innerHTML=`<option value="all">🌐 Semua</option>`+
+    agents.map(a=>`<option value="${esc(a.name)}">💬 ${esc(a.name)}</option>`).join('');
+  sel.value=[...sel.options].some(o=>o.value===cur)?cur:'all';
+  const on=agents.filter(a=>a.online).length;
+  $('stOnline').textContent=on+'/'+agents.length;
+  drawStatScreen(on,agents.length,allMsgs.length);
+  syncAgents(agents);
+}
+function renderFeed(){
+  const f=$('feed'); f.innerHTML='';
+  [...allMsgs].slice(-40).reverse().forEach(x=>{
+    const d=document.createElement('div');
+    d.className='msg'+(x.from==='iqbal'?' me':'');
+    d.innerHTML=`<div class="meta"><b>${esc(x.from)}</b> → ${esc(x.to)} · ${tstr(x.ts)}${x.auto?' · auto':''}</div>`+
+      (x.reply_to?`<div class="rt">↳ balasan #${x.reply_to}</div>`:'')+
+      `<div>${esc(x.text)}</div>`;
+    f.appendChild(d);
+  });
+  $('stMsg').textContent=allMsgs.length;
+}
+const bootT=Date.now();
+async function tick(){
+  try{
+    const a=await api('/api/agents');
+    setConn(true,'terhubung');
+    const m=await api('/api/messages?since='+lastId);
+    m.messages.forEach(x=>{lastId=Math.max(lastId,x.id);allMsgs.push(x);});
+    allMsgs=allMsgs.slice(-300);
+    renderAgents(a.agents); renderFeed();
+    const up=Math.floor((Date.now()-bootT)/1000);
+    $('stUp').textContent=Math.floor(up/3600)+'h '+Math.floor(up%3600/60)+'m';
+  }catch(e){
+    setConn(false, e.message==='401'?'token salah':'butuh token / server mati');
+  }
+}
+$('composer').onsubmit=async e=>{
+  e.preventDefault();
+  const f=$('cf').value.trim(),t=$('ct').value,x=$('cx').value.trim();
+  if(!f||!x) return alert('isi nama pengirim & pesan');
+  localStorage.cc_from=f;
+  try{
+    await api('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({from:f,to:t,text:x})});
+    $('cx').value=''; tick();
+  }catch(err){ alert('gagal kirim: '+err.message); }
+};
+setInterval(()=>{ $('clock').textContent=new Date().toLocaleString('id-ID',
+  {weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}); },1000);
+$('navTeam').onclick=()=>$('team').scrollIntoView();
+$('navAct').onclick=()=>$('activity').scrollIntoView();
+tick(); setInterval(tick,5000);
+</script>
+</body>
+</html>
