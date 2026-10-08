@@ -34,6 +34,30 @@ REPLY_CMD = os.environ.get("CC_REPLY_CMD", "")
 
 HOME = os.path.expanduser("~")
 STATE_FILE = os.path.join(HOME, f".cc-poller-{AGENT or 'noname'}.json".replace("/", "_"))
+TASK_QUEUE = os.path.join(HOME, ".cc3d-task-queue.json")
+# Pesan dari siapa yang dianggap perintah (selain iqbal, LightVela = perintah iqbal)
+BOS_SENDERS = {"iqbal", "lightvela", "LightVela", "LightVela Lead"}
+
+
+def queue_task(m):
+    """Catat pesan sebagai tugas potensial untuk dikerjakan worker latar."""
+    try:
+        q = []
+        if os.path.exists(TASK_QUEUE):
+            with open(TASK_QUEUE) as f:
+                q = json.load(f)
+        if any(t.get("id") == m["id"] for t in q):
+            return
+        q.append({"id": m["id"], "from": m["from"], "to": m["to"],
+                  "text": m["text"], "ts": m["ts"], "done": False,
+                  "queued_at": time.time()})
+        q = q[-50:]
+        tmp = TASK_QUEUE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(q, f)
+        os.replace(tmp, TASK_QUEUE)
+    except Exception as e:
+        print(f"[{AGENT}] gagal queue task: {e}", flush=True)
 
 # Fast path: panggil 9Router langsung (jauh lebih cepat daripada via hermes CLI).
 NINE_URL = os.environ.get("CC_9ROUTER_URL", "http://127.0.0.1:20128/v1").rstrip("/")
@@ -146,7 +170,8 @@ def generate_reply_hermes(frm, text):
               f"Balas singkat sebagai {AGENT}, Bahasa Indonesia santai, to-the-point.")
     env = dict(os.environ, PATH=f"{HOME}/.local/bin:" + os.environ.get("PATH", ""))
     p = subprocess.run(
-        ["hermes", "-z", prompt, "--provider", "custom", "-m", MODEL, "--no-restore-cwd"],
+        ["hermes", "-z", prompt, "--provider", "custom", "-m", MODEL,
+         "--reasoning", "none", "--no-restore-cwd"],
         capture_output=True, text=True, timeout=300, env=env)
     out = (p.stdout or "").strip()
     return out or "(model tidak mengembalikan jawaban)"
@@ -199,6 +224,10 @@ def main():
                 if m["from"] == AGENT:
                     continue
                 print(f"[{AGENT}] pesan #{m['id']} dari {m['from']}: {m['text'][:80]}", flush=True)
+                # Kalau dari bos (iqbal/LightVela) dan bukan sapaan singkat -> masuk antrean tugas
+                if m["from"] in BOS_SENDERS and len(m["text"].strip()) > 12:
+                    queue_task(m)
+                    print(f"[{AGENT}] -> antrean tugas", flush=True)
                 if not AUTO_REPLY:
                     continue
                 if m.get("depth", 0) >= MAX_DEPTH:
