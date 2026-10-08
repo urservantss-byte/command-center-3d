@@ -37,6 +37,22 @@ lock = threading.Lock()
 messages = []
 agents = {}  # nama -> {"last_seen": ts, "ip": str}
 next_id = 1
+# Rate limit: max pesan per pengirim per jendela waktu (anti spam/loop agent)
+_send_times = {}  # sender -> [timestamps]
+RATE_MAX = 10
+RATE_WINDOW = 60  # detik
+
+
+def check_rate(sender):
+    now = time.time()
+    with lock:
+        ts = _send_times.get(sender, [])
+        ts = [t for t in ts if now - t < RATE_WINDOW]
+        if len(ts) >= RATE_MAX:
+            return False
+        ts.append(now)
+        _send_times[sender] = ts
+        return True
 
 
 def load():
@@ -79,7 +95,7 @@ main{display:grid;grid-template-columns:240px 1fr;gap:14px;padding:14px;max-widt
 .card h3{font-size:14px;color:#e0573f;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px}
 .agent{padding:8px 10px;border-radius:8px;margin-bottom:6px;background:#241f18;font-size:14px;display:flex;justify-content:space-between;align-items:center}
 #convs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-.chip{background:#241f18;border:1px solid #444;color:#e8e0d4;padding:6px 12px;border-radius:20px;font-size:13px;cursor:pointer}
+.chip{background:#241f18;border:1px solid #444;color:#e8e0d4;padding:6px 12px;border-radius:20px;font-size:13px;cursor:pointer}.ubadge{background:#f87171;color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:middle}
 .chip.sel{background:#e0573f;border-color:#e0573f;color:#fff;font-weight:bold}
 .del{background:none;border:0;color:#9a8f7d;cursor:pointer;font-size:15px;margin-left:4px}
 .del:hover{color:#e0573f}
@@ -122,7 +138,8 @@ document.getElementById('tok').value=localStorage.cc_tok||'';
 document.getElementById('tok').onchange=e=>localStorage.cc_tok=e.target.value;
 document.getElementById('f').value=localStorage.cc_from||'iqbal';
 const isAdmin=n=>n.toLowerCase()==='iqbal';
-let lastId=0,allMsgs=[],currentConv='all';
+let lastId=0,allMsgs=[],currentConv='all',unread={};
+if('Notification' in window&&Notification.permission==='default')Notification.requestPermission();
 const me=()=>document.getElementById('f').value.trim()||'iqbal';
 function matchConv(x){
   if(currentConv==='all')return true;
@@ -141,7 +158,7 @@ function renderFeed(){
 function renderChips(agents){
   const c=document.getElementById('convs');
   const opts=[['all','🌐 Semua'],...agents.map(g=>[g.name,'💬 '+g.name])];
-  c.innerHTML=opts.map(([v,l])=>`<button class="chip${currentConv===v?' sel':''}" data-v="${esc(v)}">${esc(l)}</button>`).join('');
+  c.innerHTML=opts.map(([v,l])=>{const u=unread[v==='all'?'all':v]||0;return `<button class="chip${currentConv===v?' sel':''}" data-v="${esc(v)}">${esc(l)}${u?` <span class="ubadge">${u}</span>`:''}</button>`}).join('');
   c.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{currentConv=b.dataset.v;
     document.getElementById('t').value=currentConv==='all'?'all':currentConv;
     renderChips(agents);renderFeed();});
@@ -158,8 +175,15 @@ async function tick(){
     document.getElementById('senders').innerHTML=names.map(n=>`<option value="${esc(n)}">`).join('');
     document.getElementById('receivers').innerHTML=['all',...a.agents.map(g=>g.name)].map(n=>`<option value="${esc(n)}">`).join('');
     const m=await api('/api/messages?since='+lastId);
-    m.messages.forEach(x=>{lastId=Math.max(lastId,x.id);allMsgs.push(x);});
+    m.messages.forEach(x=>{lastId=Math.max(lastId,x.id);allMsgs.push(x);
+      if(x.from!==me()){const k=x.to==='all'?'all':x.from;unread[k]=(unread[k]||0)+1;
+        if(document.hidden&&'Notification' in window&&Notification.permission==='granted')
+          new Notification('Command Center: '+x.from,{body:x.text.slice(0,120)});}});
     allMsgs=allMsgs.slice(-300);
+    // reset unread untuk konversasi yang sedang dibuka
+    unread[currentConv==='all'?'all':currentConv]=0;
+    const totalU=Object.values(unread).reduce((s,n)=>s+n,0);
+    document.title=totalU?`(${totalU}) Command Center`:'Command Center';
     renderChips(a.agents);renderFeed();
   }catch(e){document.getElementById('status').textContent='○ butuh token / server mati'}
 }
@@ -275,6 +299,8 @@ class Handler(BaseHTTPRequestHandler):
             reply_to = data.get("reply_to")
             if not frm or not to or not text.strip():
                 return self._json({"error": "from, to, text required"}, 400)
+            if not check_rate(frm):
+                return self._json({"error": "rate limit: max 10 pesan/menit"}, 429)
             with lock:
                 global next_id
                 depth = 0
