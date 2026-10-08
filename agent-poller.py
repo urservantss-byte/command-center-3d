@@ -149,7 +149,7 @@ def generate_reply_direct(frm, text):
     if not key:
         raise RuntimeError("CC_9ROUTER_KEY kosong dan tidak ketemu di 9Router DB")
     prompt = (f"[Pesan via Command Center dari {frm}]\n\n{text}\n\n"
-              f"Balas singkat sebagai {AGENT}, Bahasa Indonesia santai, to-the-point, "
+              f"Balas singkat sebagai {AGENT}, Bahasa Indonesia FORMAL dan profesional (forum kerja), to-the-point, "
               f"maksimal 3 kalimat.")
     data = {"model": MODEL,
             "messages": [{"role": "user", "content": prompt}],
@@ -167,7 +167,7 @@ def generate_reply_direct(frm, text):
 def generate_reply_hermes(frm, text):
     """Via hermes CLI (lambat, tapi jalan di semua mesin standar)."""
     prompt = (f"[Pesan via Command Center dari {frm}]\n\n{text}\n\n"
-              f"Balas singkat sebagai {AGENT}, Bahasa Indonesia santai, to-the-point.")
+              f"Balas singkat sebagai {AGENT}, Bahasa Indonesia FORMAL dan profesional (forum kerja), to-the-point.")
     env = dict(os.environ, PATH=f"{HOME}/.local/bin:" + os.environ.get("PATH", ""))
     p = subprocess.run(
         ["hermes", "-z", prompt, "--provider", "custom", "-m", MODEL,
@@ -180,7 +180,7 @@ def generate_reply_hermes(frm, text):
 def generate_reply_cmd(frm, text):
     """Template shell custom via CC_REPLY_CMD."""
     prompt = (f"[Pesan via Command Center dari {frm}]\n\n{text}\n\n"
-              f"Balas singkat sebagai {AGENT}, Bahasa Indonesia santai, to-the-point.")
+              f"Balas singkat sebagai {AGENT}, Bahasa Indonesia FORMAL dan profesional (forum kerja), to-the-point.")
     cmd = REPLY_CMD.replace("{prompt}", prompt).replace("{model}", MODEL)
     env = dict(os.environ, PATH=f"{HOME}/.local/bin:" + os.environ.get("PATH", ""))
     p = subprocess.run(cmd, shell=True, capture_output=True, text=True,
