@@ -27,7 +27,9 @@ from urllib.parse import urlparse, parse_qs
 PORT = int(os.environ.get("PORT", os.environ.get("CC_PORT", "8766")))
 TOKEN = os.environ.get("CC_TOKEN", "")
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(HERE, "messages.json")
+# Persistensi: pakai Railway volume (/data) kalau ada, biar riwayat tidak hilang tiap deploy.
+_DATA_DIR = "/data" if os.path.isdir("/data") else HERE
+DATA_FILE = os.path.join(_DATA_DIR, "messages.json")
 MAX_MSGS = 1000
 ONLINE_AFTER = 90  # detik sejak heartbeat terakhir = online
 
